@@ -3,7 +3,7 @@ use std::path::Path;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 
@@ -89,9 +89,7 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .block(Block::default().title("Todos").borders(Borders::ALL))
         .row_highlight_style(
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Rgb(0xDD, 0xEE, 0xFF))
-                .add_modifier(Modifier::BOLD),
+                .bg(Color::Rgb(0xDD, 0xEE, 0xFF)),
         )
         .highlight_symbol("> ");
 
