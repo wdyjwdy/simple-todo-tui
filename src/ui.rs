@@ -13,43 +13,15 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState, data_path: &Path) {
     if state.show_help {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(3),
-                Constraint::Length(3),
-            ])
+            .constraints([Constraint::Min(3), Constraint::Length(3)])
             .split(frame.area());
 
-        render_header(frame, state, chunks[0]);
-        render_todo_list(frame, state, chunks[1]);
-        render_footer(frame, state, data_path, chunks[2]);
+        render_todo_list(frame, state, chunks[0]);
+        render_footer(frame, state, data_path, chunks[1]);
     } else {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(3)])
-            .split(frame.area());
-
-        render_header(frame, state, chunks[0]);
-        render_todo_list(frame, state, chunks[1]);
+        render_todo_list(frame, state, frame.area());
     }
     render_modal(frame, state);
-}
-
-fn render_header(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
-    let (total, active, completed) = state.counts();
-    let header = format!(
-        "Filter: {}  |  Total: {} Active: {} Done: {}",
-        state.filter.label(),
-        total,
-        active,
-        completed
-    );
-
-    let widget = Paragraph::new(header)
-        .block(Block::default().title("Overview").borders(Borders::ALL))
-        .alignment(Alignment::Left);
-
-    frame.render_widget(widget, area);
 }
 
 fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
