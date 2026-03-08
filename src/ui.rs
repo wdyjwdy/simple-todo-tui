@@ -10,18 +10,28 @@ use ratatui::{
 use crate::{app::AppState, models::Mode};
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState, data_path: &Path) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(3),
-            Constraint::Length(3),
-        ])
-        .split(frame.area());
+    if state.show_help {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(3),
+                Constraint::Length(3),
+            ])
+            .split(frame.area());
 
-    render_header(frame, state, chunks[0]);
-    render_todo_list(frame, state, chunks[1]);
-    render_footer(frame, state, data_path, chunks[2]);
+        render_header(frame, state, chunks[0]);
+        render_todo_list(frame, state, chunks[1]);
+        render_footer(frame, state, data_path, chunks[2]);
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(3)])
+            .split(frame.area());
+
+        render_header(frame, state, chunks[0]);
+        render_todo_list(frame, state, chunks[1]);
+    }
     render_modal(frame, state);
 }
 
@@ -87,11 +97,8 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
     let table = Table::new(rows, [Constraint::Min(1), Constraint::Length(10)])
         .column_spacing(1)
         .block(Block::default().title("Todos").borders(Borders::ALL))
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::Rgb(0xDD, 0xEE, 0xFF)),
-        )
-        .highlight_symbol("> ");
+        .row_highlight_style(Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)))
+        .highlight_symbol("");
 
     let mut table_state = TableState::default();
     table_state.select(Some(
@@ -101,9 +108,9 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
 }
 
 fn render_footer(frame: &mut Frame<'_>, state: &AppState, data_path: &Path, area: Rect) {
-    let base_help = "j/k: move | a: add | e: edit | x: toggle | d: delete | f: filter | q: quit";
     let mut lines = vec![
-        base_help.to_string(),
+        "j/k: move | a: add | e: edit | x: toggle | d: delete | f: filter | .: help | q: quit"
+            .to_string(),
         format!("Data: {}", data_path.display()),
     ];
 

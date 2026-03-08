@@ -7,6 +7,7 @@ pub struct AppState {
     pub todos: Vec<Todo>,
     pub selected_index: usize,
     pub filter: Filter,
+    pub show_help: bool,
     pub mode: Mode,
     pub input_buffer: String,
     pub status_message: Option<String>,
@@ -24,6 +25,7 @@ impl AppState {
             todos,
             selected_index: 0,
             filter: Filter::All,
+            show_help: true,
             mode: Mode::Normal,
             input_buffer: String::new(),
             status_message: None,
@@ -94,6 +96,7 @@ pub enum Action {
     StartDeleteConfirm,
     CycleFilter,
     ToggleSelected,
+    ToggleHelp,
     InputChar(char),
     Backspace,
     Submit,
@@ -178,6 +181,10 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
                 state.status_message = Some("No todo selected to toggle".to_string());
                 AppCommand::None
             }
+        }
+        Action::ToggleHelp => {
+            state.show_help = !state.show_help;
+            AppCommand::None
         }
         Action::Quit => AppCommand::Quit,
         Action::NoOp

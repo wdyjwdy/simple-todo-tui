@@ -17,6 +17,7 @@ cargo run
 - `x`: toggle complete
 - `d`: delete selected todo (with confirm)
 - `f`: cycle filter (`All` -> `Active` -> `Completed`)
+- `.`: toggle help menu
 - `Enter`: confirm in modal (add/edit/delete)
 - `Esc`: cancel current modal
 - `q`: quit
