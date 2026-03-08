@@ -4,8 +4,7 @@ use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 
 use crate::{app::AppState, models::Mode};
@@ -59,43 +58,47 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = visible
+    let rows: Vec<Row> = visible
         .iter()
         .map(|&idx| {
             let todo = &state.todos[idx];
             let prefix = if todo.completed { "[x]" } else { "[ ]" };
-            let content = if todo.completed {
-                let completed_at = todo
-                    .completed_at
+            let content = format!("{} {}", prefix, todo.title);
+            let date = if todo.completed {
+                todo.completed_at
                     .unwrap_or_else(|| todo.created_at.date_naive())
                     .format("%Y-%m-%d")
-                    .to_string();
-                format!("{} {} {}", prefix, todo.title, completed_at)
+                    .to_string()
             } else {
-                format!("{} {}", prefix, todo.title)
+                String::new()
             };
-            let mut item = ListItem::new(Line::from(content));
+
+            let mut row = Row::new(vec![
+                Cell::from(content),
+                Cell::from(format!("{:>10}", date)),
+            ]);
             if todo.completed {
-                item = item.style(Style::default().fg(Color::Green));
+                row = row.style(Style::default().fg(Color::Green));
             }
-            item
+            row
         })
         .collect();
 
-    let list = List::new(items)
+    let table = Table::new(rows, [Constraint::Min(1), Constraint::Length(10)])
+        .column_spacing(1)
         .block(Block::default().title("Todos").borders(Borders::ALL))
-        .highlight_style(
+        .row_highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");
 
-    let mut list_state = ListState::default();
-    list_state.select(Some(
+    let mut table_state = TableState::default();
+    table_state.select(Some(
         state.selected_index.min(visible.len().saturating_sub(1)),
     ));
-    frame.render_stateful_widget(list, area, &mut list_state);
+    frame.render_stateful_widget(table, area, &mut table_state);
 }
 
 fn render_footer(frame: &mut Frame<'_>, state: &AppState, data_path: &Path, area: Rect) {

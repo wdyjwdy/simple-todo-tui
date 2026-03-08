@@ -223,7 +223,7 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
                 Mode::Adding => {
                     let new_todo = Todo::new(title);
                     let new_id = new_todo.id;
-                    state.todos.push(new_todo);
+                    state.todos.insert(0, new_todo);
                     state.mode = Mode::Normal;
                     state.input_buffer.clear();
                     state.status_message = None;
@@ -302,16 +302,18 @@ mod tests {
 
     #[test]
     fn add_accepts_non_empty_title() {
-        let mut state = AppState::new(vec![]);
+        let mut state = AppState::new(vec![Todo::new("existing".into())]);
         dispatch(Action::StartAdd, &mut state);
         for c in "task".chars() {
             dispatch(Action::InputChar(c), &mut state);
         }
         let cmd = dispatch(Action::Submit, &mut state);
         assert_eq!(cmd, AppCommand::Save);
-        assert_eq!(state.todos.len(), 1);
+        assert_eq!(state.todos.len(), 2);
         assert_eq!(state.todos[0].title, "task");
         assert!(!state.todos[0].completed);
+        assert_eq!(state.todos[1].title, "existing");
+        assert_eq!(state.selected_index, 0);
         assert_eq!(state.mode, Mode::Normal);
     }
 
