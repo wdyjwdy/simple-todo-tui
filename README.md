@@ -10,8 +10,8 @@ cargo run
 
 ## Keybindings
 
-- `Left`: focus group panel
-- `Right`: focus todo panel
+- `h`: focus group panel
+- `l`: focus todo panel
 - `j`: move down in focused panel
 - `k`: move up in focused panel
 - `a`: add in focused panel (group or todo)

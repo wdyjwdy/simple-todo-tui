@@ -62,8 +62,11 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .groups
         .iter()
         .map(|group| {
-            let count = state.group_todo_count(group.id);
-            Row::new(vec![Cell::from(format!("{} ({})", group.name, count))])
+            let (completed, total) = state.group_progress(group.id);
+            Row::new(vec![Cell::from(format!(
+                "{} ({}/{})",
+                group.name, completed, total
+            ))])
         })
         .collect();
 
@@ -142,7 +145,7 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
 
 fn render_footer(frame: &mut Frame<'_>, state: &AppState, data_path: &Path, area: Rect) {
     let mut lines = vec![
-        "Left/Right: focus panel | j/k: move | a: add | e: edit | x: toggle todo | d: delete | f: filter todos | .: help | q: quit".to_string(),
+        "hjkl: move | a: add | e: edit | x: toggle todo | d: delete | f: filter todos | .: help | q: quit".to_string(),
         format!("Data: {}", data_path.display()),
     ];
 

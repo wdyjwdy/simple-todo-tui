@@ -86,8 +86,14 @@ impl AppState {
         self.selected_todo_index().map(|idx| self.todos[idx].id)
     }
 
-    pub fn group_todo_count(&self, group_id: Uuid) -> usize {
-        self.todos.iter().filter(|t| t.group_id == group_id).count()
+    pub fn group_progress(&self, group_id: Uuid) -> (usize, usize) {
+        let total = self.todos.iter().filter(|t| t.group_id == group_id).count();
+        let completed = self
+            .todos
+            .iter()
+            .filter(|t| t.group_id == group_id && t.completed)
+            .count();
+        (completed, total)
     }
 
     fn set_group_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
