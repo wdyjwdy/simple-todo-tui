@@ -76,11 +76,13 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .highlight_symbol("");
 
     let mut table_state = TableState::default();
-    table_state.select(Some(
-        state
-            .selected_group_index
-            .min(state.groups.len().saturating_sub(1)),
-    ));
+    if focused {
+        table_state.select(Some(
+            state
+                .selected_group_index
+                .min(state.groups.len().saturating_sub(1)),
+        ));
+    }
     frame.render_stateful_widget(table, area, &mut table_state);
 }
 
@@ -135,17 +137,20 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .highlight_symbol("");
 
     let mut table_state = TableState::default();
-    table_state.select(Some(
-        state
-            .selected_todo_index
-            .min(visible.len().saturating_sub(1)),
-    ));
+    if focused {
+        table_state.select(Some(
+            state
+                .selected_todo_index
+                .min(visible.len().saturating_sub(1)),
+        ));
+    }
     frame.render_stateful_widget(table, area, &mut table_state);
 }
 
 fn render_footer(frame: &mut Frame<'_>, state: &AppState, data_path: &Path, area: Rect) {
     let mut lines = vec![
-        "hjkl: move | a: add | e: edit | x: toggle todo | d: delete | f: filter todos | .: help | q: quit".to_string(),
+        "hjkl: move | a: add | e: edit | x: toggle | d: delete | f: filter | .: help | q: quit"
+            .to_string(),
         format!("Data: {}", data_path.display()),
     ];
 
