@@ -89,7 +89,8 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .block(Block::default().title("Todos").borders(Borders::ALL))
         .row_highlight_style(
             Style::default()
-                .fg(Color::Blue)
+                .fg(Color::Black)
+                .bg(Color::Rgb(0xDD, 0xEE, 0xFF))
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");
