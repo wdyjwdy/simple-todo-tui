@@ -25,7 +25,7 @@ fn map_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('l') | KeyCode::Right => Action::FocusRight,
         KeyCode::Char('a') => Action::StartAdd,
         KeyCode::Char('e') => Action::StartEdit,
-        KeyCode::Char('x') => Action::ToggleSelected,
+        KeyCode::Char('x') | KeyCode::Enter => Action::ToggleSelected,
         KeyCode::Char('d') => Action::StartDeleteConfirm,
         KeyCode::Char('f') => Action::CycleFilter,
         KeyCode::Char('.') => Action::ToggleHelp,
