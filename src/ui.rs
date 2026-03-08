@@ -212,13 +212,35 @@ fn render_modal(frame: &mut Frame<'_>, state: &AppState) {
         Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => {
             let area = centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area);
-            let message = "confirm(Enter) cancel(Esc)";
-            let modal = Paragraph::new(message).alignment(Alignment::Center).block(
-                Block::default()
-                    .title("Confirm Delete")
-                    .borders(Borders::ALL),
-            );
-            frame.render_widget(modal, area);
+            let block = Block::default()
+                .title("Confirm Delete")
+                .borders(Borders::ALL);
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+
+            if inner.height > 0 {
+                let bottom = Rect {
+                    x: inner.x,
+                    y: inner.y + inner.height - 1,
+                    width: inner.width,
+                    height: 1,
+                };
+                let parts = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(bottom);
+
+                frame.render_widget(
+                    Paragraph::new("confirm(Enter)")
+                        .style(Style::default().fg(Color::Red))
+                        .alignment(Alignment::Left),
+                    parts[0],
+                );
+                frame.render_widget(
+                    Paragraph::new("cancel(Esc)").alignment(Alignment::Right),
+                    parts[1],
+                );
+            }
         }
     }
 }
