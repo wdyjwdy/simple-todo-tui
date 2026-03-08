@@ -1,12 +1,24 @@
 # Simple Todo TUI (Rust)
 
-A keyboard-first todo app for the terminal, built with `ratatui` + `crossterm`.
+## Screenshot
 
-## Run
+![](./Screenshot.png)
 
-```bash
-cargo run
-```
+## Installation
+
+1. Download the binary file. ([releases](https://github.com/wdyjwdy/simple-todo-tui/releases))
+2. Place it in your `bin` directory, for example: `~/mybin/todo`.
+3. Add the directory to your environment variables in `~/.zshrc`. (Optional)
+
+    ```
+    export PATH="$HOME/mybin:$PATH"
+    ```
+
+4. Then run
+
+    ```bash
+    todo
+    ```
 
 ## Keybindings
 
