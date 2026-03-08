@@ -19,6 +19,7 @@ fn load_missing_file_returns_empty_data() {
     let data = storage::load_data(&path).expect("load should succeed for missing file");
     assert!(data.groups.is_empty());
     assert!(data.todos.is_empty());
+    assert!(data.show_help);
 }
 
 #[test]
@@ -40,6 +41,7 @@ fn save_and_load_roundtrip() {
     let data = AppData {
         groups: vec![group],
         todos: vec![todo],
+        show_help: false,
     };
 
     storage::save_data(&path, &data).expect("save should succeed");
@@ -76,6 +78,7 @@ fn atomic_save_produces_target_file() {
             created_at: Utc::now(),
             completed_at: Some(Utc::now().date_naive()),
         }],
+        show_help: true,
     };
 
     storage::save_data(&path, &data).expect("save should succeed");

@@ -13,6 +13,12 @@ use crate::models::{Group, Todo};
 pub struct AppData {
     pub groups: Vec<Group>,
     pub todos: Vec<Todo>,
+    #[serde(default = "default_show_help")]
+    pub show_help: bool,
+}
+
+fn default_show_help() -> bool {
+    true
 }
 
 pub fn default_data_path() -> PathBuf {
@@ -35,6 +41,7 @@ pub fn load_data(path: &Path) -> Result<AppData> {
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(AppData {
             groups: vec![],
             todos: vec![],
+            show_help: true,
         }),
         Err(err) => {
             Err(err).with_context(|| format!("Failed to read todos from {}", path.display()))

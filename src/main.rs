@@ -25,6 +25,7 @@ fn main() -> Result<()> {
             storage::AppData {
                 groups: vec![],
                 todos: vec![],
+                show_help: true,
             },
             Some(format!(
                 "Failed to load todo file (starting empty): {}",
@@ -34,6 +35,7 @@ fn main() -> Result<()> {
     };
 
     let mut app_state = AppState::new(data.groups, data.todos);
+    app_state.show_help = data.show_help;
     app_state.status_message = startup_status;
 
     let mut terminal = setup_terminal()?;
@@ -61,6 +63,7 @@ fn run_app(
                         let data = storage::AppData {
                             groups: state.groups.clone(),
                             todos: state.todos.clone(),
+                            show_help: state.show_help,
                         };
                         if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
@@ -71,6 +74,7 @@ fn run_app(
                         let data = storage::AppData {
                             groups: state.groups.clone(),
                             todos: state.todos.clone(),
+                            show_help: state.show_help,
                         };
                         if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
