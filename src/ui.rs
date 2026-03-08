@@ -58,19 +58,31 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         return;
     }
 
+    let count_width = state
+        .groups
+        .iter()
+        .map(|group| {
+            let (completed, total) = state.group_progress(group.id);
+            format!("{}/{}", completed, total).len()
+        })
+        .max()
+        .unwrap_or(1);
+
     let rows: Vec<Row> = state
         .groups
         .iter()
         .map(|group| {
             let (completed, total) = state.group_progress(group.id);
-            Row::new(vec![Cell::from(format!(
-                "{} ({}/{})",
-                group.name, completed, total
-            ))])
+            let progress = format!("{}/{}", completed, total);
+            Row::new(vec![
+                Cell::from(group.name.clone()),
+                Cell::from(format!("{:>width$}", progress, width = count_width)),
+            ])
         })
         .collect();
 
-    let table = Table::new(rows, [Constraint::Min(1)])
+    let table = Table::new(rows, [Constraint::Min(1), Constraint::Length(count_width as u16)])
+        .column_spacing(1)
         .block(panel_block("Groups", focused))
         .row_highlight_style(Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)))
         .highlight_symbol("");
@@ -186,6 +198,13 @@ fn render_modal(frame: &mut Frame<'_>, state: &AppState) {
                     .borders(Borders::ALL),
             );
             frame.render_widget(modal, area);
+            let cursor_x = area
+                .x
+                .saturating_add(1)
+                .saturating_add(state.input_buffer.chars().count() as u16)
+                .min(area.x.saturating_add(area.width.saturating_sub(2)));
+            let cursor_y = area.y.saturating_add(1);
+            frame.set_cursor_position((cursor_x, cursor_y));
         }
         Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => {
             let area = centered_rect(60, 20, frame.area());
