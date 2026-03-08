@@ -63,7 +63,7 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .iter()
         .map(|group| {
             let (completed, total) = state.group_progress(group.id);
-            format!("{}/{}", completed, total).len()
+            format!("({}/{})", completed, total).len()
         })
         .max()
         .unwrap_or(1);
@@ -73,7 +73,7 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .iter()
         .map(|group| {
             let (completed, total) = state.group_progress(group.id);
-            let progress = format!("{}/{}", completed, total);
+            let progress = format!("({}/{})", completed, total);
             Row::new(vec![
                 Cell::from(group.name.clone()),
                 Cell::from(format!("{:>width$}", progress, width = count_width)),
@@ -81,11 +81,14 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         })
         .collect();
 
-    let table = Table::new(rows, [Constraint::Min(1), Constraint::Length(count_width as u16)])
-        .column_spacing(1)
-        .block(panel_block("Groups", focused))
-        .row_highlight_style(Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)))
-        .highlight_symbol("");
+    let table = Table::new(
+        rows,
+        [Constraint::Min(1), Constraint::Length(count_width as u16)],
+    )
+    .column_spacing(1)
+    .block(panel_block("Groups", focused))
+    .row_highlight_style(Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)))
+    .highlight_symbol("");
 
     let mut table_state = TableState::default();
     if focused {
@@ -209,13 +212,7 @@ fn render_modal(frame: &mut Frame<'_>, state: &AppState) {
         Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => {
             let area = centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area);
-            let message = match state.mode {
-                Mode::ConfirmDeleteTodo => "Delete selected todo? Enter = confirm, Esc = cancel",
-                Mode::ConfirmDeleteGroup => {
-                    "Delete selected group and all its todos? Enter = confirm, Esc = cancel"
-                }
-                _ => "",
-            };
+            let message = "confirm(Enter) cancel(Esc)";
             let modal = Paragraph::new(message).alignment(Alignment::Center).block(
                 Block::default()
                     .title("Confirm Delete")
