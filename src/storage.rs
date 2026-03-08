@@ -5,8 +5,15 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
-use crate::models::Todo;
+use crate::models::{Group, Todo};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppData {
+    pub groups: Vec<Group>,
+    pub todos: Vec<Todo>,
+}
 
 pub fn default_data_path() -> PathBuf {
     if let Some(mut dir) = dirs::data_local_dir() {
@@ -18,21 +25,24 @@ pub fn default_data_path() -> PathBuf {
     }
 }
 
-pub fn load_todos(path: &Path) -> Result<Vec<Todo>> {
+pub fn load_data(path: &Path) -> Result<AppData> {
     match fs::read_to_string(path) {
         Ok(raw) => {
-            let todos: Vec<Todo> = serde_json::from_str(&raw)
+            let data: AppData = serde_json::from_str(&raw)
                 .with_context(|| format!("Failed to parse todos JSON at {}", path.display()))?;
-            Ok(todos)
+            Ok(data)
         }
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(vec![]),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(AppData {
+            groups: vec![],
+            todos: vec![],
+        }),
         Err(err) => {
             Err(err).with_context(|| format!("Failed to read todos from {}", path.display()))
         }
     }
 }
 
-pub fn save_todos(path: &Path, todos: &[Todo]) -> Result<()> {
+pub fn save_data(path: &Path, data: &AppData) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -42,7 +52,7 @@ pub fn save_todos(path: &Path, todos: &[Todo]) -> Result<()> {
         })?;
     }
 
-    let payload = serde_json::to_string_pretty(todos).context("Failed to serialize todos")?;
+    let payload = serde_json::to_string_pretty(data).context("Failed to serialize todos")?;
     let tmp_path = path.with_extension("json.tmp");
 
     fs::write(&tmp_path, payload)

@@ -9,8 +9,10 @@ pub fn map_key_to_action(mode: Mode, key: KeyEvent) -> Action {
 
     match mode {
         Mode::Normal => map_normal_mode(key),
-        Mode::Adding | Mode::Editing => map_text_input_mode(key),
-        Mode::ConfirmDelete => map_confirm_delete_mode(key),
+        Mode::AddingTodo | Mode::EditingTodo | Mode::AddingGroup | Mode::EditingGroup => {
+            map_text_input_mode(key)
+        }
+        Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => map_confirm_delete_mode(key),
     }
 }
 
@@ -19,6 +21,8 @@ fn map_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Char('j') | KeyCode::Down => Action::MoveDown,
         KeyCode::Char('k') | KeyCode::Up => Action::MoveUp,
+        KeyCode::Left => Action::FocusLeft,
+        KeyCode::Right => Action::FocusRight,
         KeyCode::Char('a') => Action::StartAdd,
         KeyCode::Char('e') => Action::StartEdit,
         KeyCode::Char('x') => Action::ToggleSelected,

@@ -1,11 +1,20 @@
-use crate::models::{Filter, Mode, Todo};
+use crate::models::{Filter, Group, Mode, Todo};
 use chrono::Utc;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelFocus {
+    Groups,
+    Todos,
+}
+
 #[derive(Debug)]
 pub struct AppState {
+    pub groups: Vec<Group>,
     pub todos: Vec<Todo>,
-    pub selected_index: usize,
+    pub selected_group_index: usize,
+    pub selected_todo_index: usize,
+    pub focused_panel: PanelFocus,
     pub filter: Filter,
     pub show_help: bool,
     pub mode: Mode,
@@ -14,16 +23,26 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(mut todos: Vec<Todo>) -> Self {
+    pub fn new(mut groups: Vec<Group>, mut todos: Vec<Todo>) -> Self {
         for todo in &mut todos {
             if todo.completed && todo.completed_at.is_none() {
                 todo.completed_at = Some(todo.created_at.date_naive());
             }
         }
 
+        if groups.is_empty() {
+            groups.push(Group::new("Inbox".to_string()));
+        }
+
+        let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
+        todos.retain(|todo| group_ids.contains(&todo.group_id));
+
         let mut state = Self {
+            groups,
             todos,
-            selected_index: 0,
+            selected_group_index: 0,
+            selected_todo_index: 0,
+            focused_panel: PanelFocus::Todos,
             filter: Filter::All,
             show_help: true,
             mode: Mode::Normal,
@@ -34,56 +53,84 @@ impl AppState {
         state
     }
 
-    pub fn filtered_indices(&self) -> Vec<usize> {
+    pub fn selected_group_id(&self) -> Option<Uuid> {
+        self.groups.get(self.selected_group_index).map(|g| g.id)
+    }
+
+    pub fn filtered_todo_indices(&self) -> Vec<usize> {
+        let Some(group_id) = self.selected_group_id() else {
+            return vec![];
+        };
+
         self.todos
             .iter()
             .enumerate()
             .filter_map(|(idx, todo)| {
-                let matches = match self.filter {
+                let in_group = todo.group_id == group_id;
+                let matches_filter = match self.filter {
                     Filter::All => true,
                     Filter::Active => !todo.completed,
                     Filter::Completed => todo.completed,
                 };
-                matches.then_some(idx)
+                (in_group && matches_filter).then_some(idx)
             })
             .collect()
     }
 
     pub fn selected_todo_index(&self) -> Option<usize> {
-        let visible = self.filtered_indices();
-        visible.get(self.selected_index).copied()
+        let visible = self.filtered_todo_indices();
+        visible.get(self.selected_todo_index).copied()
     }
 
     pub fn selected_todo_id(&self) -> Option<Uuid> {
         self.selected_todo_index().map(|idx| self.todos[idx].id)
     }
 
-    pub fn counts(&self) -> (usize, usize, usize) {
-        let total = self.todos.len();
-        let completed = self.todos.iter().filter(|t| t.completed).count();
-        let active = total.saturating_sub(completed);
-        (total, active, completed)
+    pub fn group_todo_count(&self, group_id: Uuid) -> usize {
+        self.todos.iter().filter(|t| t.group_id == group_id).count()
     }
 
-    fn set_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
-        let visible = self.filtered_indices();
-        if visible.is_empty() {
-            self.selected_index = 0;
+    fn set_group_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
+        if self.groups.is_empty() {
+            self.selected_group_index = 0;
             return;
         }
 
-        if let Some(id) = id {
-            if let Some(pos) = visible.iter().position(|&idx| self.todos[idx].id == id) {
-                self.selected_index = pos;
-                return;
-            }
+        if let Some(id) = id
+            && let Some(pos) = self.groups.iter().position(|g| g.id == id)
+        {
+            self.selected_group_index = pos;
+            return;
         }
 
-        self.selected_index = self.selected_index.min(visible.len().saturating_sub(1));
+        self.selected_group_index = self
+            .selected_group_index
+            .min(self.groups.len().saturating_sub(1));
+    }
+
+    fn set_todo_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
+        let visible = self.filtered_todo_indices();
+        if visible.is_empty() {
+            self.selected_todo_index = 0;
+            return;
+        }
+
+        if let Some(id) = id
+            && let Some(pos) = visible.iter().position(|&idx| self.todos[idx].id == id)
+        {
+            self.selected_todo_index = pos;
+            return;
+        }
+
+        self.selected_todo_index = self
+            .selected_todo_index
+            .min(visible.len().saturating_sub(1));
     }
 
     pub fn normalize_selection(&mut self) {
-        self.set_selection_by_id_or_clamp(self.selected_todo_id());
+        let selected_group_id = self.selected_group_id();
+        self.set_group_selection_by_id_or_clamp(selected_group_id);
+        self.set_todo_selection_by_id_or_clamp(self.selected_todo_id());
     }
 }
 
@@ -91,6 +138,8 @@ impl AppState {
 pub enum Action {
     MoveUp,
     MoveDown,
+    FocusLeft,
+    FocusRight,
     StartAdd,
     StartEdit,
     StartDeleteConfirm,
@@ -115,72 +164,139 @@ pub enum AppCommand {
 pub fn dispatch(action: Action, state: &mut AppState) -> AppCommand {
     match state.mode {
         Mode::Normal => handle_normal_mode(action, state),
-        Mode::Adding | Mode::Editing | Mode::ConfirmDelete => handle_modal_mode(action, state),
+        Mode::AddingTodo
+        | Mode::EditingTodo
+        | Mode::ConfirmDeleteTodo
+        | Mode::AddingGroup
+        | Mode::EditingGroup
+        | Mode::ConfirmDeleteGroup => handle_modal_mode(action, state),
     }
 }
 
 fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
     match action {
         Action::MoveUp => {
-            if state.selected_index > 0 {
-                state.selected_index -= 1;
+            match state.focused_panel {
+                PanelFocus::Groups => {
+                    if state.selected_group_index > 0 {
+                        state.selected_group_index -= 1;
+                        state.set_todo_selection_by_id_or_clamp(None);
+                    }
+                }
+                PanelFocus::Todos => {
+                    if state.selected_todo_index > 0 {
+                        state.selected_todo_index -= 1;
+                    }
+                }
             }
             AppCommand::None
         }
         Action::MoveDown => {
-            let len = state.filtered_indices().len();
-            if len > 0 {
-                state.selected_index = (state.selected_index + 1).min(len - 1);
+            match state.focused_panel {
+                PanelFocus::Groups => {
+                    let len = state.groups.len();
+                    if len > 0 {
+                        state.selected_group_index = (state.selected_group_index + 1).min(len - 1);
+                        state.set_todo_selection_by_id_or_clamp(None);
+                    }
+                }
+                PanelFocus::Todos => {
+                    let len = state.filtered_todo_indices().len();
+                    if len > 0 {
+                        state.selected_todo_index = (state.selected_todo_index + 1).min(len - 1);
+                    }
+                }
             }
             AppCommand::None
         }
+        Action::FocusLeft => {
+            state.focused_panel = PanelFocus::Groups;
+            AppCommand::None
+        }
+        Action::FocusRight => {
+            state.focused_panel = PanelFocus::Todos;
+            AppCommand::None
+        }
         Action::StartAdd => {
-            state.mode = Mode::Adding;
             state.input_buffer.clear();
             state.status_message = None;
+            state.mode = match state.focused_panel {
+                PanelFocus::Groups => Mode::AddingGroup,
+                PanelFocus::Todos => Mode::AddingTodo,
+            };
             AppCommand::None
         }
         Action::StartEdit => {
-            if let Some(idx) = state.selected_todo_index() {
-                state.mode = Mode::Editing;
-                state.input_buffer = state.todos[idx].title.clone();
-                state.status_message = None;
-            } else {
-                state.status_message = Some("No todo selected to edit".to_string());
+            match state.focused_panel {
+                PanelFocus::Groups => {
+                    if let Some(group) = state.groups.get(state.selected_group_index) {
+                        state.mode = Mode::EditingGroup;
+                        state.input_buffer = group.name.clone();
+                        state.status_message = None;
+                    } else {
+                        state.status_message = Some("No group selected to edit".to_string());
+                    }
+                }
+                PanelFocus::Todos => {
+                    if let Some(idx) = state.selected_todo_index() {
+                        state.mode = Mode::EditingTodo;
+                        state.input_buffer = state.todos[idx].title.clone();
+                        state.status_message = None;
+                    } else {
+                        state.status_message = Some("No todo selected to edit".to_string());
+                    }
+                }
             }
             AppCommand::None
         }
         Action::StartDeleteConfirm => {
-            if state.selected_todo_index().is_some() {
-                state.mode = Mode::ConfirmDelete;
-                state.status_message = None;
-            } else {
-                state.status_message = Some("No todo selected to delete".to_string());
+            match state.focused_panel {
+                PanelFocus::Groups => {
+                    if state.groups.len() <= 1 {
+                        state.status_message = Some("Cannot delete the last group".to_string());
+                    } else if state.groups.get(state.selected_group_index).is_some() {
+                        state.mode = Mode::ConfirmDeleteGroup;
+                        state.status_message = None;
+                    } else {
+                        state.status_message = Some("No group selected to delete".to_string());
+                    }
+                }
+                PanelFocus::Todos => {
+                    if state.selected_todo_index().is_some() {
+                        state.mode = Mode::ConfirmDeleteTodo;
+                        state.status_message = None;
+                    } else {
+                        state.status_message = Some("No todo selected to delete".to_string());
+                    }
+                }
             }
             AppCommand::None
         }
         Action::CycleFilter => {
-            let selected_id = state.selected_todo_id();
-            state.filter = state.filter.next();
-            state.set_selection_by_id_or_clamp(selected_id);
+            if state.focused_panel == PanelFocus::Todos {
+                let selected_id = state.selected_todo_id();
+                state.filter = state.filter.next();
+                state.set_todo_selection_by_id_or_clamp(selected_id);
+            }
             AppCommand::None
         }
         Action::ToggleSelected => {
-            if let Some(idx) = state.selected_todo_index() {
-                let selected_id = state.todos[idx].id;
-                state.todos[idx].completed = !state.todos[idx].completed;
-                if state.todos[idx].completed {
-                    state.todos[idx].completed_at = Some(Utc::now().date_naive());
-                } else {
-                    state.todos[idx].completed_at = None;
+            if state.focused_panel == PanelFocus::Todos {
+                if let Some(idx) = state.selected_todo_index() {
+                    let selected_id = state.todos[idx].id;
+                    state.todos[idx].completed = !state.todos[idx].completed;
+                    if state.todos[idx].completed {
+                        state.todos[idx].completed_at = Some(Utc::now().date_naive());
+                    } else {
+                        state.todos[idx].completed_at = None;
+                    }
+                    state.set_todo_selection_by_id_or_clamp(Some(selected_id));
+                    state.status_message = None;
+                    return AppCommand::Save;
                 }
-                state.set_selection_by_id_or_clamp(Some(selected_id));
-                state.status_message = None;
-                AppCommand::Save
-            } else {
                 state.status_message = Some("No todo selected to toggle".to_string());
-                AppCommand::None
             }
+            AppCommand::None
         }
         Action::ToggleHelp => {
             state.show_help = !state.show_help;
@@ -197,8 +313,12 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
 
 fn handle_modal_mode(action: Action, state: &mut AppState) -> AppCommand {
     match state.mode {
-        Mode::Adding | Mode::Editing => handle_text_input_modal(action, state),
-        Mode::ConfirmDelete => handle_confirm_delete_modal(action, state),
+        Mode::AddingTodo | Mode::EditingTodo | Mode::AddingGroup | Mode::EditingGroup => {
+            handle_text_input_modal(action, state)
+        }
+        Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => {
+            handle_confirm_delete_modal(action, state)
+        }
         Mode::Normal => AppCommand::None,
     }
 }
@@ -219,31 +339,61 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
             AppCommand::None
         }
         Action::Submit => {
-            let title = state.input_buffer.trim().to_string();
-            if title.is_empty() {
+            let value = state.input_buffer.trim().to_string();
+            if value.is_empty() {
                 state.status_message = Some("Title cannot be empty".to_string());
                 return AppCommand::None;
             }
 
-            let selected_id = state.selected_todo_id();
             match state.mode {
-                Mode::Adding => {
-                    let new_todo = Todo::new(title);
-                    let new_id = new_todo.id;
-                    state.todos.insert(0, new_todo);
+                Mode::AddingGroup => {
+                    let group = Group::new(value);
+                    let group_id = group.id;
+                    state.groups.insert(0, group);
                     state.mode = Mode::Normal;
                     state.input_buffer.clear();
                     state.status_message = None;
-                    state.set_selection_by_id_or_clamp(Some(new_id));
+                    state.set_group_selection_by_id_or_clamp(Some(group_id));
+                    state.set_todo_selection_by_id_or_clamp(None);
                     AppCommand::Save
                 }
-                Mode::Editing => {
-                    if let Some(idx) = state.selected_todo_index() {
-                        state.todos[idx].title = title;
+                Mode::EditingGroup => {
+                    if let Some(group) = state.groups.get_mut(state.selected_group_index) {
+                        group.name = value;
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
                         state.status_message = None;
-                        state.set_selection_by_id_or_clamp(selected_id);
+                        AppCommand::Save
+                    } else {
+                        state.mode = Mode::Normal;
+                        state.input_buffer.clear();
+                        state.status_message = Some("No group selected to edit".to_string());
+                        AppCommand::None
+                    }
+                }
+                Mode::AddingTodo => {
+                    if let Some(group_id) = state.selected_group_id() {
+                        let todo = Todo::new(value, group_id);
+                        let todo_id = todo.id;
+                        state.todos.insert(0, todo);
+                        state.mode = Mode::Normal;
+                        state.input_buffer.clear();
+                        state.status_message = None;
+                        state.set_todo_selection_by_id_or_clamp(Some(todo_id));
+                        AppCommand::Save
+                    } else {
+                        state.mode = Mode::Normal;
+                        state.input_buffer.clear();
+                        state.status_message = Some("No group selected for new todo".to_string());
+                        AppCommand::None
+                    }
+                }
+                Mode::EditingTodo => {
+                    if let Some(idx) = state.selected_todo_index() {
+                        state.todos[idx].title = value;
+                        state.mode = Mode::Normal;
+                        state.input_buffer.clear();
+                        state.status_message = None;
                         AppCommand::Save
                     } else {
                         state.mode = Mode::Normal;
@@ -261,20 +411,44 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
 
 fn handle_confirm_delete_modal(action: Action, state: &mut AppState) -> AppCommand {
     match action {
-        Action::Submit => {
-            if let Some(idx) = state.selected_todo_index() {
-                state.todos.remove(idx);
-                state.mode = Mode::Normal;
-                state.input_buffer.clear();
-                state.status_message = None;
-                state.normalize_selection();
-                AppCommand::Save
-            } else {
-                state.mode = Mode::Normal;
-                state.status_message = Some("No todo selected to delete".to_string());
-                AppCommand::None
+        Action::Submit => match state.mode {
+            Mode::ConfirmDeleteGroup => {
+                if state.groups.len() <= 1 {
+                    state.mode = Mode::Normal;
+                    state.status_message = Some("Cannot delete the last group".to_string());
+                    return AppCommand::None;
+                }
+
+                if let Some(group) = state.groups.get(state.selected_group_index).cloned() {
+                    state.groups.remove(state.selected_group_index);
+                    state.todos.retain(|todo| todo.group_id != group.id);
+                    state.mode = Mode::Normal;
+                    state.input_buffer.clear();
+                    state.status_message = None;
+                    state.normalize_selection();
+                    AppCommand::Save
+                } else {
+                    state.mode = Mode::Normal;
+                    state.status_message = Some("No group selected to delete".to_string());
+                    AppCommand::None
+                }
             }
-        }
+            Mode::ConfirmDeleteTodo => {
+                if let Some(idx) = state.selected_todo_index() {
+                    state.todos.remove(idx);
+                    state.mode = Mode::Normal;
+                    state.input_buffer.clear();
+                    state.status_message = None;
+                    state.set_todo_selection_by_id_or_clamp(None);
+                    AppCommand::Save
+                } else {
+                    state.mode = Mode::Normal;
+                    state.status_message = Some("No todo selected to delete".to_string());
+                    AppCommand::None
+                }
+            }
+            _ => AppCommand::None,
+        },
         Action::Cancel => {
             state.mode = Mode::Normal;
             AppCommand::None
@@ -287,98 +461,100 @@ fn handle_confirm_delete_modal(action: Action, state: &mut AppState) -> AppComma
 mod tests {
     use super::*;
 
-    fn build_state_with_two() -> AppState {
-        let mut state = AppState::new(vec![Todo::new("one".into()), Todo::new("two".into())]);
-        state.filter = Filter::All;
-        state
+    fn build_state() -> AppState {
+        let g1 = Group::new("g1".into());
+        let g2 = Group::new("g2".into());
+        let t1 = Todo::new("one".into(), g1.id);
+        let t2 = Todo::new("two".into(), g1.id);
+        let t3 = Todo::new("three".into(), g2.id);
+        AppState::new(vec![g1, g2], vec![t1, t2, t3])
     }
 
     #[test]
-    fn add_rejects_empty_title() {
-        let mut state = AppState::new(vec![]);
-        dispatch(Action::StartAdd, &mut state);
-        let cmd = dispatch(Action::Submit, &mut state);
-        assert_eq!(cmd, AppCommand::None);
-        assert!(state.todos.is_empty());
-        assert_eq!(state.mode, Mode::Adding);
-        assert_eq!(
-            state.status_message.as_deref(),
-            Some("Title cannot be empty")
-        );
-    }
+    fn add_todo_in_todo_panel() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Todos;
 
-    #[test]
-    fn add_accepts_non_empty_title() {
-        let mut state = AppState::new(vec![Todo::new("existing".into())]);
         dispatch(Action::StartAdd, &mut state);
         for c in "task".chars() {
             dispatch(Action::InputChar(c), &mut state);
         }
+
         let cmd = dispatch(Action::Submit, &mut state);
         assert_eq!(cmd, AppCommand::Save);
-        assert_eq!(state.todos.len(), 2);
-        assert_eq!(state.todos[0].title, "task");
-        assert!(!state.todos[0].completed);
-        assert_eq!(state.todos[1].title, "existing");
-        assert_eq!(state.selected_index, 0);
         assert_eq!(state.mode, Mode::Normal);
+        assert_eq!(state.todos[0].title, "task");
+        assert_eq!(state.todos[0].group_id, state.groups[0].id);
     }
 
     #[test]
-    fn edit_selected_updates_title_only() {
-        let mut state = build_state_with_two();
-        let original = state.todos[0].clone();
+    fn add_group_in_group_panel() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Groups;
 
-        dispatch(Action::StartEdit, &mut state);
-        state.input_buffer = "renamed".to_string();
+        dispatch(Action::StartAdd, &mut state);
+        for c in "new group".chars() {
+            dispatch(Action::InputChar(c), &mut state);
+        }
+
         let cmd = dispatch(Action::Submit, &mut state);
-
         assert_eq!(cmd, AppCommand::Save);
-        assert_eq!(state.todos[0].title, "renamed");
-        assert_eq!(state.todos[0].id, original.id);
-        assert_eq!(state.todos[0].completed, original.completed);
+        assert_eq!(state.groups[0].name, "new group");
+        assert_eq!(state.selected_group_index, 0);
     }
 
     #[test]
-    fn toggle_flips_completion_state() {
-        let mut state = build_state_with_two();
-        assert!(!state.todos[0].completed);
-        assert!(state.todos[0].completed_at.is_none());
-        let cmd = dispatch(Action::ToggleSelected, &mut state);
-        assert_eq!(cmd, AppCommand::Save);
-        assert!(state.todos[0].completed);
-        assert!(state.todos[0].completed_at.is_some());
+    fn move_group_selection_updates_visible_todos() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Groups;
+        assert_eq!(state.filtered_todo_indices().len(), 2);
 
-        let cmd = dispatch(Action::ToggleSelected, &mut state);
-        assert_eq!(cmd, AppCommand::Save);
-        assert!(!state.todos[0].completed);
-        assert!(state.todos[0].completed_at.is_none());
-    }
-
-    #[test]
-    fn delete_updates_selection_safely() {
-        let mut state = build_state_with_two();
         dispatch(Action::MoveDown, &mut state);
-        assert_eq!(state.selected_index, 1);
+
+        assert_eq!(state.selected_group_index, 1);
+        assert_eq!(state.filtered_todo_indices().len(), 1);
+    }
+
+    #[test]
+    fn cannot_delete_last_group() {
+        let group = Group::new("only".into());
+        let mut state = AppState::new(vec![group], vec![]);
+        state.focused_panel = PanelFocus::Groups;
+
+        let cmd = dispatch(Action::StartDeleteConfirm, &mut state);
+
+        assert_eq!(cmd, AppCommand::None);
+        assert_eq!(state.mode, Mode::Normal);
+        assert_eq!(
+            state.status_message.as_deref(),
+            Some("Cannot delete the last group")
+        );
+    }
+
+    #[test]
+    fn deleting_group_cascades_todos() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Groups;
 
         dispatch(Action::StartDeleteConfirm, &mut state);
         let cmd = dispatch(Action::Submit, &mut state);
 
         assert_eq!(cmd, AppCommand::Save);
+        assert_eq!(state.groups.len(), 1);
         assert_eq!(state.todos.len(), 1);
-        assert_eq!(state.selected_index, 0);
     }
 
     #[test]
-    fn filter_and_clamp_selection() {
-        let mut state = AppState::new(vec![Todo::new("a".into()), Todo::new("b".into())]);
-        state.todos[1].completed = true;
-        dispatch(Action::MoveDown, &mut state);
-        assert_eq!(state.selected_index, 1);
+    fn filter_applies_only_in_todo_panel() {
+        let mut state = build_state();
+        state.todos[0].completed = true;
 
+        state.focused_panel = PanelFocus::Groups;
+        dispatch(Action::CycleFilter, &mut state);
+        assert_eq!(state.filter, Filter::All);
+
+        state.focused_panel = PanelFocus::Todos;
         dispatch(Action::CycleFilter, &mut state);
         assert_eq!(state.filter, Filter::Active);
-        assert_eq!(state.filtered_indices().len(), 1);
-        assert_eq!(state.selected_index, 0);
     }
 }

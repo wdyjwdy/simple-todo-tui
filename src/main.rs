@@ -18,10 +18,13 @@ use todo::{input, storage, ui};
 fn main() -> Result<()> {
     let data_path = storage::default_data_path();
 
-    let (todos, startup_status) = match storage::load_todos(&data_path) {
-        Ok(todos) => (todos, None),
+    let (data, startup_status) = match storage::load_data(&data_path) {
+        Ok(data) => (data, None),
         Err(err) => (
-            vec![],
+            storage::AppData {
+                groups: vec![],
+                todos: vec![],
+            },
             Some(format!(
                 "Failed to load todo file (starting empty): {}",
                 err
@@ -29,7 +32,7 @@ fn main() -> Result<()> {
         ),
     };
 
-    let mut app_state = AppState::new(todos);
+    let mut app_state = AppState::new(data.groups, data.todos);
     app_state.status_message = startup_status;
 
     let mut terminal = setup_terminal()?;
@@ -54,13 +57,21 @@ fn run_app(
                 match cmd {
                     AppCommand::None => {}
                     AppCommand::Save => {
-                        if let Err(err) = storage::save_todos(&data_path, &state.todos) {
+                        let data = storage::AppData {
+                            groups: state.groups.clone(),
+                            todos: state.todos.clone(),
+                        };
+                        if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
                                 Some(format!("Save failed at {}: {}", data_path.display(), err));
                         }
                     }
                     AppCommand::Quit => {
-                        if let Err(err) = storage::save_todos(&data_path, &state.todos) {
+                        let data = storage::AppData {
+                            groups: state.groups.clone(),
+                            todos: state.todos.clone(),
+                        };
+                        if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
                                 Some(format!("Save failed at {}: {}", data_path.display(), err));
                             continue;
