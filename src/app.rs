@@ -1,4 +1,5 @@
 use crate::models::{Filter, Mode, Todo};
+use chrono::Utc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -12,7 +13,13 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(todos: Vec<Todo>) -> Self {
+    pub fn new(mut todos: Vec<Todo>) -> Self {
+        for todo in &mut todos {
+            if todo.completed && todo.completed_at.is_none() {
+                todo.completed_at = Some(todo.created_at.date_naive());
+            }
+        }
+
         let mut state = Self {
             todos,
             selected_index: 0,
@@ -159,6 +166,11 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
             if let Some(idx) = state.selected_todo_index() {
                 let selected_id = state.todos[idx].id;
                 state.todos[idx].completed = !state.todos[idx].completed;
+                if state.todos[idx].completed {
+                    state.todos[idx].completed_at = Some(Utc::now().date_naive());
+                } else {
+                    state.todos[idx].completed_at = None;
+                }
                 state.set_selection_by_id_or_clamp(Some(selected_id));
                 state.status_message = None;
                 AppCommand::Save
@@ -322,9 +334,16 @@ mod tests {
     fn toggle_flips_completion_state() {
         let mut state = build_state_with_two();
         assert!(!state.todos[0].completed);
+        assert!(state.todos[0].completed_at.is_none());
         let cmd = dispatch(Action::ToggleSelected, &mut state);
         assert_eq!(cmd, AppCommand::Save);
         assert!(state.todos[0].completed);
+        assert!(state.todos[0].completed_at.is_some());
+
+        let cmd = dispatch(Action::ToggleSelected, &mut state);
+        assert_eq!(cmd, AppCommand::Save);
+        assert!(!state.todos[0].completed);
+        assert!(state.todos[0].completed_at.is_none());
     }
 
     #[test]

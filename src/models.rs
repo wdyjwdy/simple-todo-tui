@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -8,6 +8,8 @@ pub struct Todo {
     pub title: String,
     pub completed: bool,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub completed_at: Option<NaiveDate>,
 }
 
 impl Todo {
@@ -17,6 +19,7 @@ impl Todo {
             title,
             completed: false,
             created_at: Utc::now(),
+            completed_at: None,
         }
     }
 }

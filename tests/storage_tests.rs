@@ -25,6 +25,7 @@ fn save_and_load_roundtrip() {
         title: "hello".to_string(),
         completed: false,
         created_at: Utc::now(),
+        completed_at: None,
     };
 
     storage::save_todos(&path, std::slice::from_ref(&todo)).expect("save should succeed");
@@ -52,6 +53,7 @@ fn atomic_save_produces_target_file() {
         title: "atomic".to_string(),
         completed: true,
         created_at: Utc::now(),
+        completed_at: Some(Utc::now().date_naive()),
     }];
 
     storage::save_todos(&path, &todos).expect("save should succeed");

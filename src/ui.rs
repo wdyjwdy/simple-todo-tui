@@ -4,6 +4,7 @@ use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
@@ -28,7 +29,7 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState, data_path: &Path) {
 fn render_header(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
     let (total, active, completed) = state.counts();
     let header = format!(
-        "Simple Todo TUI  |  Filter: {}  |  Total: {} Active: {} Done: {}",
+        "Filter: {}  |  Total: {} Active: {} Done: {}",
         state.filter.label(),
         total,
         active,
@@ -63,8 +64,21 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .map(|&idx| {
             let todo = &state.todos[idx];
             let prefix = if todo.completed { "[x]" } else { "[ ]" };
-            let content = format!("{} {}", prefix, todo.title);
-            ListItem::new(content)
+            let content = if todo.completed {
+                let completed_at = todo
+                    .completed_at
+                    .unwrap_or_else(|| todo.created_at.date_naive())
+                    .format("%Y-%m-%d")
+                    .to_string();
+                format!("{} {} {}", prefix, todo.title, completed_at)
+            } else {
+                format!("{} {}", prefix, todo.title)
+            };
+            let mut item = ListItem::new(Line::from(content));
+            if todo.completed {
+                item = item.style(Style::default().fg(Color::Green));
+            }
+            item
         })
         .collect();
 
@@ -85,8 +99,7 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
 }
 
 fn render_footer(frame: &mut Frame<'_>, state: &AppState, data_path: &Path, area: Rect) {
-    let base_help =
-        "j/k or arrows: move | a: add | e: edit | x: toggle | d: delete | f: filter | q: quit";
+    let base_help = "j/k: move | a: add | e: edit | x: toggle | d: delete | f: filter | q: quit";
     let mut lines = vec![
         base_help.to_string(),
         format!("Data: {}", data_path.display()),

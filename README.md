@@ -10,8 +10,8 @@ cargo run
 
 ## Keybindings
 
-- `j` / `Down`: move down
-- `k` / `Up`: move up
+- `j`: move down
+- `k`: move up
 - `a`: add todo
 - `e`: edit selected todo
 - `x`: toggle complete
