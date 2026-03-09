@@ -19,6 +19,7 @@ pub struct AppState {
     pub show_help: bool,
     pub mode: Mode,
     pub input_buffer: String,
+    pub input_cursor: usize,
     pub status_message: Option<String>,
 }
 
@@ -47,6 +48,7 @@ impl AppState {
             show_help: true,
             mode: Mode::Normal,
             input_buffer: String::new(),
+            input_cursor: 0,
             status_message: None,
         };
         state.normalize_selection();
@@ -69,8 +71,8 @@ impl AppState {
                 let in_group = todo.group_id == group_id;
                 let matches_filter = match self.filter {
                     Filter::All => true,
-                    Filter::Active => !todo.completed,
-                    Filter::Completed => todo.completed,
+                    Filter::Open => !todo.completed,
+                    Filter::Done => todo.completed,
                 };
                 (in_group && matches_filter).then_some(idx)
             })
@@ -138,6 +140,55 @@ impl AppState {
         self.set_group_selection_by_id_or_clamp(selected_group_id);
         self.set_todo_selection_by_id_or_clamp(self.selected_todo_id());
     }
+
+    fn input_len(&self) -> usize {
+        self.input_buffer.chars().count()
+    }
+
+    fn input_byte_index_for_char_index(&self, char_index: usize) -> usize {
+        if char_index >= self.input_len() {
+            return self.input_buffer.len();
+        }
+
+        self.input_buffer
+            .char_indices()
+            .nth(char_index)
+            .map(|(idx, _)| idx)
+            .unwrap_or(self.input_buffer.len())
+    }
+
+    fn insert_input_char(&mut self, c: char) {
+        let byte_idx = self.input_byte_index_for_char_index(self.input_cursor);
+        self.input_buffer.insert(byte_idx, c);
+        self.input_cursor += 1;
+    }
+
+    fn backspace_input_char(&mut self) {
+        if self.input_cursor == 0 {
+            return;
+        }
+
+        let end = self.input_byte_index_for_char_index(self.input_cursor);
+        let start = self.input_byte_index_for_char_index(self.input_cursor - 1);
+        self.input_buffer.replace_range(start..end, "");
+        self.input_cursor -= 1;
+    }
+
+    fn move_input_cursor_left(&mut self) {
+        self.input_cursor = self.input_cursor.saturating_sub(1);
+    }
+
+    fn move_input_cursor_right(&mut self) {
+        self.input_cursor = (self.input_cursor + 1).min(self.input_len());
+    }
+
+    fn move_input_cursor_home(&mut self) {
+        self.input_cursor = 0;
+    }
+
+    fn move_input_cursor_end(&mut self) {
+        self.input_cursor = self.input_len();
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +205,10 @@ pub enum Action {
     ToggleHelp,
     InputChar(char),
     Backspace,
+    MoveCursorLeft,
+    MoveCursorRight,
+    MoveCursorHome,
+    MoveCursorEnd,
     Submit,
     Cancel,
     Quit,
@@ -225,6 +280,7 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
         }
         Action::StartAdd => {
             state.input_buffer.clear();
+            state.input_cursor = 0;
             state.status_message = None;
             state.mode = match state.focused_panel {
                 PanelFocus::Groups => Mode::AddingGroup,
@@ -238,6 +294,7 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
                     if let Some(group) = state.groups.get(state.selected_group_index) {
                         state.mode = Mode::EditingGroup;
                         state.input_buffer = group.name.clone();
+                        state.input_cursor = state.input_buffer.chars().count();
                         state.status_message = None;
                     } else {
                         state.status_message = Some("No group selected to edit".to_string());
@@ -247,6 +304,7 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
                     if let Some(idx) = state.selected_todo_index() {
                         state.mode = Mode::EditingTodo;
                         state.input_buffer = state.todos[idx].title.clone();
+                        state.input_cursor = state.input_buffer.chars().count();
                         state.status_message = None;
                     } else {
                         state.status_message = Some("No todo selected to edit".to_string());
@@ -312,6 +370,10 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
         Action::NoOp
         | Action::InputChar(_)
         | Action::Backspace
+        | Action::MoveCursorLeft
+        | Action::MoveCursorRight
+        | Action::MoveCursorHome
+        | Action::MoveCursorEnd
         | Action::Submit
         | Action::Cancel => AppCommand::None,
     }
@@ -332,16 +394,33 @@ fn handle_modal_mode(action: Action, state: &mut AppState) -> AppCommand {
 fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
     match action {
         Action::InputChar(c) => {
-            state.input_buffer.push(c);
+            state.insert_input_char(c);
             AppCommand::None
         }
         Action::Backspace => {
-            state.input_buffer.pop();
+            state.backspace_input_char();
+            AppCommand::None
+        }
+        Action::MoveCursorLeft => {
+            state.move_input_cursor_left();
+            AppCommand::None
+        }
+        Action::MoveCursorRight => {
+            state.move_input_cursor_right();
+            AppCommand::None
+        }
+        Action::MoveCursorHome => {
+            state.move_input_cursor_home();
+            AppCommand::None
+        }
+        Action::MoveCursorEnd => {
+            state.move_input_cursor_end();
             AppCommand::None
         }
         Action::Cancel => {
             state.mode = Mode::Normal;
             state.input_buffer.clear();
+            state.input_cursor = 0;
             AppCommand::None
         }
         Action::Submit => {
@@ -358,6 +437,7 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
                     state.groups.insert(0, group);
                     state.mode = Mode::Normal;
                     state.input_buffer.clear();
+                    state.input_cursor = 0;
                     state.status_message = None;
                     state.set_group_selection_by_id_or_clamp(Some(group_id));
                     state.set_todo_selection_by_id_or_clamp(None);
@@ -368,11 +448,13 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
                         group.name = value;
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = None;
                         AppCommand::Save
                     } else {
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = Some("No group selected to edit".to_string());
                         AppCommand::None
                     }
@@ -384,12 +466,14 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
                         state.todos.insert(0, todo);
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = None;
                         state.set_todo_selection_by_id_or_clamp(Some(todo_id));
                         AppCommand::Save
                     } else {
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = Some("No group selected for new todo".to_string());
                         AppCommand::None
                     }
@@ -399,11 +483,13 @@ fn handle_text_input_modal(action: Action, state: &mut AppState) -> AppCommand {
                         state.todos[idx].title = value;
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = None;
                         AppCommand::Save
                     } else {
                         state.mode = Mode::Normal;
                         state.input_buffer.clear();
+                        state.input_cursor = 0;
                         state.status_message = Some("No todo selected to edit".to_string());
                         AppCommand::None
                     }
@@ -430,6 +516,7 @@ fn handle_confirm_delete_modal(action: Action, state: &mut AppState) -> AppComma
                     state.todos.retain(|todo| todo.group_id != group.id);
                     state.mode = Mode::Normal;
                     state.input_buffer.clear();
+                    state.input_cursor = 0;
                     state.status_message = None;
                     state.normalize_selection();
                     AppCommand::Save
@@ -444,6 +531,7 @@ fn handle_confirm_delete_modal(action: Action, state: &mut AppState) -> AppComma
                     state.todos.remove(idx);
                     state.mode = Mode::Normal;
                     state.input_buffer.clear();
+                    state.input_cursor = 0;
                     state.status_message = None;
                     state.set_todo_selection_by_id_or_clamp(None);
                     AppCommand::Save
@@ -457,6 +545,7 @@ fn handle_confirm_delete_modal(action: Action, state: &mut AppState) -> AppComma
         },
         Action::Cancel => {
             state.mode = Mode::Normal;
+            state.input_cursor = 0;
             AppCommand::None
         }
         _ => AppCommand::None,
@@ -561,6 +650,37 @@ mod tests {
 
         state.focused_panel = PanelFocus::Todos;
         dispatch(Action::CycleFilter, &mut state);
-        assert_eq!(state.filter, Filter::Active);
+        assert_eq!(state.filter, Filter::Open);
+    }
+
+    #[test]
+    fn text_input_cursor_move_and_insert() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Todos;
+        dispatch(Action::StartAdd, &mut state);
+
+        dispatch(Action::InputChar('a'), &mut state);
+        dispatch(Action::InputChar('c'), &mut state);
+        dispatch(Action::MoveCursorLeft, &mut state);
+        dispatch(Action::InputChar('b'), &mut state);
+
+        assert_eq!(state.input_buffer, "abc");
+        assert_eq!(state.input_cursor, 2);
+    }
+
+    #[test]
+    fn text_input_backspace_at_cursor() {
+        let mut state = build_state();
+        state.focused_panel = PanelFocus::Todos;
+        dispatch(Action::StartAdd, &mut state);
+
+        dispatch(Action::InputChar('a'), &mut state);
+        dispatch(Action::InputChar('b'), &mut state);
+        dispatch(Action::InputChar('c'), &mut state);
+        dispatch(Action::MoveCursorLeft, &mut state);
+        dispatch(Action::Backspace, &mut state);
+
+        assert_eq!(state.input_buffer, "ac");
+        assert_eq!(state.input_cursor, 1);
     }
 }

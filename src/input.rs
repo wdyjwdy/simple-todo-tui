@@ -38,6 +38,10 @@ fn map_text_input_mode(key: KeyEvent) -> Action {
         KeyCode::Esc => Action::Cancel,
         KeyCode::Enter => Action::Submit,
         KeyCode::Backspace => Action::Backspace,
+        KeyCode::Left => Action::MoveCursorLeft,
+        KeyCode::Right => Action::MoveCursorRight,
+        KeyCode::Home => Action::MoveCursorHome,
+        KeyCode::End => Action::MoveCursorEnd,
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 Action::NoOp

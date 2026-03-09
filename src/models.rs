@@ -46,24 +46,24 @@ impl Todo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Filter {
     All,
-    Active,
-    Completed,
+    Open,
+    Done,
 }
 
 impl Filter {
     pub fn next(self) -> Self {
         match self {
-            Filter::All => Filter::Active,
-            Filter::Active => Filter::Completed,
-            Filter::Completed => Filter::All,
+            Filter::All => Filter::Open,
+            Filter::Open => Filter::Done,
+            Filter::Done => Filter::All,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Filter::All => "All",
-            Filter::Active => "Active",
-            Filter::Completed => "Completed",
+            Filter::All => "all",
+            Filter::Open => "open",
+            Filter::Done => "done",
         }
     }
 }

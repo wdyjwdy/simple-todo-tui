@@ -4,12 +4,13 @@ use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 
 use crate::{
     app::{AppState, PanelFocus},
-    models::Mode,
+    models::{Filter, Mode},
 };
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState, data_path: &Path) {
@@ -107,9 +108,9 @@ fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
     let panel_title = format!("Todos ({})", state.filter.label());
 
     if visible.is_empty() {
-        let text = match state.filter.label() {
-            "All" => "No todos in this group. Press 'a' to add one.",
-            _ => "No todos in this filter for selected group.",
+        let text = match state.filter {
+            Filter::All => "No todos in this group. Press 'a' to add one.",
+            Filter::Open | Filter::Done => "No todos in this filter for selected group.",
         };
         let empty = Paragraph::new(text)
             .block(panel_block(&panel_title, focused))
@@ -195,19 +196,13 @@ fn render_modal(frame: &mut Frame<'_>, state: &AppState) {
                 _ => "",
             };
 
-            let modal = Paragraph::new(state.input_buffer.clone()).block(
+            let modal = Paragraph::new(input_with_cursor_line(&state.input_buffer, state.input_cursor))
+                .block(
                 Block::default()
                     .title(format!("{} (Enter to save, Esc to cancel)", title))
                     .borders(Borders::ALL),
             );
             frame.render_widget(modal, area);
-            let cursor_x = area
-                .x
-                .saturating_add(1)
-                .saturating_add(state.input_buffer.chars().count() as u16)
-                .min(area.x.saturating_add(area.width.saturating_sub(2)));
-            let cursor_y = area.y.saturating_add(1);
-            frame.set_cursor_position((cursor_x, cursor_y));
         }
         Mode::ConfirmDeleteTodo | Mode::ConfirmDeleteGroup => {
             let area = centered_rect(60, 20, frame.area());
@@ -243,6 +238,23 @@ fn render_modal(frame: &mut Frame<'_>, state: &AppState) {
             }
         }
     }
+}
+
+fn input_with_cursor_line(input: &str, cursor: usize) -> Line<'static> {
+    let cursor = cursor.min(input.chars().count());
+    let mut chars = input.chars();
+    let before: String = chars.by_ref().take(cursor).collect();
+    let current = chars.next().unwrap_or(' ');
+    let after: String = chars.collect();
+
+    Line::from(vec![
+        Span::raw(before),
+        Span::styled(
+            current.to_string(),
+            Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)),
+        ),
+        Span::raw(after),
+    ])
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

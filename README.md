@@ -30,10 +30,11 @@
 - `e`: edit in focused panel (group or todo)
 - `d`: delete in focused panel (group or todo, with confirm)
 - `x` / `⏎`: toggle selected todo complete (todo panel only)
-- `f`: cycle todo filter (`All` -> `Active` -> `Completed`, todo panel only)
+- `f`: cycle todo filter (`all` -> `open` -> `done`, todo panel only)
 - `.`: toggle help panel
 - `Enter`: confirm in modal (add/edit/delete)
 - `Esc`: cancel current modal
+- `←` / `→` / `Home` / `End`: move cursor in add/edit input
 - `q`: quit
 
 ## Data file location
