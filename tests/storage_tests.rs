@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use chrono::Utc;
 use todo::{
-    models::{Group, Todo},
+    models::{Filter, Group, Todo},
     storage::{self, AppData},
 };
 use uuid::Uuid;
@@ -20,6 +20,8 @@ fn load_missing_file_returns_empty_data() {
     assert!(data.groups.is_empty());
     assert!(data.todos.is_empty());
     assert!(data.show_help);
+    assert_eq!(data.todo_filter, Filter::All);
+    assert_eq!(data.group_filter, Filter::All);
 }
 
 #[test]
@@ -42,6 +44,8 @@ fn save_and_load_roundtrip() {
         groups: vec![group],
         todos: vec![todo],
         show_help: false,
+        todo_filter: Filter::Open,
+        group_filter: Filter::Done,
     };
 
     storage::save_data(&path, &data).expect("save should succeed");
@@ -79,6 +83,8 @@ fn atomic_save_produces_target_file() {
             completed_at: Some(Utc::now().date_naive()),
         }],
         show_help: true,
+        todo_filter: Filter::All,
+        group_filter: Filter::Open,
     };
 
     storage::save_data(&path, &data).expect("save should succeed");
@@ -86,4 +92,24 @@ fn atomic_save_produces_target_file() {
     assert!(path.exists());
     let loaded = storage::load_data(&path).expect("load should succeed");
     assert_eq!(loaded, data);
+}
+
+#[test]
+fn load_old_json_defaults_filter_state() {
+    let path = temp_path("legacy_filters").join("todos.json");
+    fs::create_dir_all(path.parent().expect("path has parent")).expect("dir create should work");
+    fs::write(
+        &path,
+        r#"{
+  "groups": [],
+  "todos": [],
+  "show_help": false
+}"#,
+    )
+    .expect("write should succeed");
+
+    let loaded = storage::load_data(&path).expect("load should succeed");
+    assert!(!loaded.show_help);
+    assert_eq!(loaded.todo_filter, Filter::All);
+    assert_eq!(loaded.group_filter, Filter::All);
 }

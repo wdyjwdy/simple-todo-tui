@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Group, Todo};
+use crate::models::{Filter, Group, Todo};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AppData {
@@ -15,10 +15,22 @@ pub struct AppData {
     pub todos: Vec<Todo>,
     #[serde(default = "default_show_help")]
     pub show_help: bool,
+    #[serde(default = "default_todo_filter")]
+    pub todo_filter: Filter,
+    #[serde(default = "default_group_filter")]
+    pub group_filter: Filter,
 }
 
 fn default_show_help() -> bool {
     true
+}
+
+fn default_todo_filter() -> Filter {
+    Filter::All
+}
+
+fn default_group_filter() -> Filter {
+    Filter::All
 }
 
 pub fn default_data_path() -> PathBuf {
@@ -42,6 +54,8 @@ pub fn load_data(path: &Path) -> Result<AppData> {
             groups: vec![],
             todos: vec![],
             show_help: true,
+            todo_filter: Filter::All,
+            group_filter: Filter::All,
         }),
         Err(err) => {
             Err(err).with_context(|| format!("Failed to read todos from {}", path.display()))

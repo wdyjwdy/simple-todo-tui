@@ -14,6 +14,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 use todo::app::{AppCommand, AppState, dispatch};
+use todo::models::Filter;
 use todo::{input, storage, ui};
 
 fn main() -> Result<()> {
@@ -26,6 +27,8 @@ fn main() -> Result<()> {
                 groups: vec![],
                 todos: vec![],
                 show_help: true,
+                todo_filter: Filter::All,
+                group_filter: Filter::All,
             },
             Some(format!(
                 "Failed to load todo file (starting empty): {}",
@@ -36,6 +39,8 @@ fn main() -> Result<()> {
 
     let mut app_state = AppState::new(data.groups, data.todos);
     app_state.show_help = data.show_help;
+    app_state.todo_filter = data.todo_filter;
+    app_state.group_filter = data.group_filter;
     app_state.status_message = startup_status;
 
     let mut terminal = setup_terminal()?;
@@ -64,6 +69,8 @@ fn run_app(
                             groups: state.groups.clone(),
                             todos: state.todos.clone(),
                             show_help: state.show_help,
+                            todo_filter: state.todo_filter,
+                            group_filter: state.group_filter,
                         };
                         if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
@@ -75,6 +82,8 @@ fn run_app(
                             groups: state.groups.clone(),
                             todos: state.todos.clone(),
                             show_help: state.show_help,
+                            todo_filter: state.todo_filter,
+                            group_filter: state.group_filter,
                         };
                         if let Err(err) = storage::save_data(&data_path, &data) {
                             state.status_message =
