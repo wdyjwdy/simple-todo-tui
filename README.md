@@ -30,7 +30,9 @@
 - `e`: edit in focused panel (group or todo)
 - `d`: delete in focused panel (group or todo, with confirm)
 - `x` / `⏎`: toggle selected todo complete (todo panel only)
-- `f`: cycle todo filter (`all` -> `open` -> `done`, todo panel only)
+- `f`: cycle filter (`all` -> `open` -> `done`) for focused panel
+  - Todos: filter todo items by status
+  - Groups: `all` shows all groups, `open` shows groups with `x < y`, `done` shows groups with `x = y` where `x/y` is completed/total
 - `.`: toggle help panel
 - `Enter`: confirm in modal (add/edit/delete)
 - `Esc`: cancel current modal

@@ -15,7 +15,8 @@ pub struct AppState {
     pub selected_group_index: usize,
     pub selected_todo_index: usize,
     pub focused_panel: PanelFocus,
-    pub filter: Filter,
+    pub todo_filter: Filter,
+    pub group_filter: Filter,
     pub show_help: bool,
     pub mode: Mode,
     pub input_buffer: String,
@@ -44,7 +45,8 @@ impl AppState {
             selected_group_index: 0,
             selected_todo_index: 0,
             focused_panel: PanelFocus::Todos,
-            filter: Filter::All,
+            todo_filter: Filter::All,
+            group_filter: Filter::All,
             show_help: true,
             mode: Mode::Normal,
             input_buffer: String::new(),
@@ -59,6 +61,22 @@ impl AppState {
         self.groups.get(self.selected_group_index).map(|g| g.id)
     }
 
+    pub fn filtered_group_indices(&self) -> Vec<usize> {
+        self.groups
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, group)| {
+                let (completed, total) = self.group_progress(group.id);
+                let matches_filter = match self.group_filter {
+                    Filter::All => true,
+                    Filter::Open => completed < total,
+                    Filter::Done => completed == total,
+                };
+                matches_filter.then_some(idx)
+            })
+            .collect()
+    }
+
     pub fn filtered_todo_indices(&self) -> Vec<usize> {
         let Some(group_id) = self.selected_group_id() else {
             return vec![];
@@ -69,7 +87,7 @@ impl AppState {
             .enumerate()
             .filter_map(|(idx, todo)| {
                 let in_group = todo.group_id == group_id;
-                let matches_filter = match self.filter {
+                let matches_filter = match self.todo_filter {
                     Filter::All => true,
                     Filter::Open => !todo.completed,
                     Filter::Done => todo.completed,
@@ -99,21 +117,22 @@ impl AppState {
     }
 
     fn set_group_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
-        if self.groups.is_empty() {
+        let visible = self.filtered_group_indices();
+        if visible.is_empty() {
             self.selected_group_index = 0;
             return;
         }
 
         if let Some(id) = id
-            && let Some(pos) = self.groups.iter().position(|g| g.id == id)
+            && let Some(pos) = visible.iter().position(|&idx| self.groups[idx].id == id)
         {
-            self.selected_group_index = pos;
+            self.selected_group_index = visible[pos];
             return;
         }
 
-        self.selected_group_index = self
-            .selected_group_index
-            .min(self.groups.len().saturating_sub(1));
+        if !visible.contains(&self.selected_group_index) {
+            self.selected_group_index = visible[0];
+        }
     }
 
     fn set_todo_selection_by_id_or_clamp(&mut self, id: Option<Uuid>) {
@@ -239,8 +258,13 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
         Action::MoveUp => {
             match state.focused_panel {
                 PanelFocus::Groups => {
-                    if state.selected_group_index > 0 {
-                        state.selected_group_index -= 1;
+                    let visible = state.filtered_group_indices();
+                    if let Some(pos) = visible
+                        .iter()
+                        .position(|&idx| idx == state.selected_group_index)
+                        && pos > 0
+                    {
+                        state.selected_group_index = visible[pos - 1];
                         state.set_todo_selection_by_id_or_clamp(None);
                     }
                 }
@@ -255,9 +279,11 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
         Action::MoveDown => {
             match state.focused_panel {
                 PanelFocus::Groups => {
-                    let len = state.groups.len();
-                    if len > 0 {
-                        state.selected_group_index = (state.selected_group_index + 1).min(len - 1);
+                    let visible = state.filtered_group_indices();
+                    if let Some(pos) = visible.iter().position(|&idx| idx == state.selected_group_index)
+                        && pos + 1 < visible.len()
+                    {
+                        state.selected_group_index = visible[pos + 1];
                         state.set_todo_selection_by_id_or_clamp(None);
                     }
                 }
@@ -337,10 +363,18 @@ fn handle_normal_mode(action: Action, state: &mut AppState) -> AppCommand {
             AppCommand::None
         }
         Action::CycleFilter => {
-            if state.focused_panel == PanelFocus::Todos {
-                let selected_id = state.selected_todo_id();
-                state.filter = state.filter.next();
-                state.set_todo_selection_by_id_or_clamp(selected_id);
+            match state.focused_panel {
+                PanelFocus::Todos => {
+                    let selected_id = state.selected_todo_id();
+                    state.todo_filter = state.todo_filter.next();
+                    state.set_todo_selection_by_id_or_clamp(selected_id);
+                }
+                PanelFocus::Groups => {
+                    state.group_filter = state.group_filter.next();
+                    let selected_id = state.selected_group_id();
+                    state.set_group_selection_by_id_or_clamp(selected_id);
+                    state.set_todo_selection_by_id_or_clamp(None);
+                }
             }
             AppCommand::None
         }
@@ -640,17 +674,44 @@ mod tests {
     }
 
     #[test]
-    fn filter_applies_only_in_todo_panel() {
+    fn filter_cycles_in_focused_panel_only() {
         let mut state = build_state();
-        state.todos[0].completed = true;
-
         state.focused_panel = PanelFocus::Groups;
         dispatch(Action::CycleFilter, &mut state);
-        assert_eq!(state.filter, Filter::All);
+        assert_eq!(state.group_filter, Filter::Open);
+        assert_eq!(state.todo_filter, Filter::All);
 
         state.focused_panel = PanelFocus::Todos;
         dispatch(Action::CycleFilter, &mut state);
-        assert_eq!(state.filter, Filter::Open);
+        assert_eq!(state.todo_filter, Filter::Open);
+        assert_eq!(state.group_filter, Filter::Open);
+    }
+
+    #[test]
+    fn group_progress_is_completed_over_total() {
+        let mut state = build_state();
+        state.todos[0].completed = true; // g1: 1 done, 1 open (total 2)
+        let g1 = state.groups[0].id;
+
+        state.group_filter = Filter::All;
+        assert_eq!(state.group_progress(g1), (1, 2));
+    }
+
+    #[test]
+    fn group_filter_shows_open_and_done_groups_by_progress() {
+        let mut state = build_state();
+        state.todos[0].completed = true; // g1 becomes 1/2, g2 is 0/1
+        state.todos[2].completed = true; // g2 becomes 1/1
+
+        state.group_filter = Filter::Open;
+        let open = state.filtered_group_indices();
+        assert_eq!(open.len(), 1);
+        assert_eq!(state.groups[open[0]].name, "g1");
+
+        state.group_filter = Filter::Done;
+        let done = state.filtered_group_indices();
+        assert_eq!(done.len(), 1);
+        assert_eq!(state.groups[done[0]].name, "g2");
     }
 
     #[test]

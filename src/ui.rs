@@ -49,30 +49,35 @@ fn panel_block<'a>(title: &'a str, focused: bool) -> Block<'a> {
 
 fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
     let focused = state.focused_panel == PanelFocus::Groups;
+    let panel_title = format!("Groups ({})", state.group_filter.label());
+    let visible = state.filtered_group_indices();
 
-    if state.groups.is_empty() {
-        let empty = Paragraph::new("No groups")
-            .block(panel_block("Groups", focused))
+    if visible.is_empty() {
+        let text = match state.group_filter {
+            Filter::All => "No groups",
+            Filter::Open | Filter::Done => "No groups in this filter.",
+        };
+        let empty = Paragraph::new(text)
+            .block(panel_block(&panel_title, focused))
             .alignment(Alignment::Center)
             .wrap(Wrap { trim: true });
         frame.render_widget(empty, area);
         return;
     }
 
-    let count_width = state
-        .groups
+    let count_width = visible
         .iter()
-        .map(|group| {
-            let (completed, total) = state.group_progress(group.id);
+        .map(|&idx| {
+            let (completed, total) = state.group_progress(state.groups[idx].id);
             format!("({}/{})", completed, total).len()
         })
         .max()
         .unwrap_or(1);
 
-    let rows: Vec<Row> = state
-        .groups
+    let rows: Vec<Row> = visible
         .iter()
-        .map(|group| {
+        .map(|&idx| {
+            let group = &state.groups[idx];
             let (completed, total) = state.group_progress(group.id);
             let progress = format!("({}/{})", completed, total);
             Row::new(vec![
@@ -87,16 +92,19 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         [Constraint::Min(1), Constraint::Length(count_width as u16)],
     )
     .column_spacing(1)
-    .block(panel_block("Groups", focused))
+    .block(panel_block(&panel_title, focused))
     .row_highlight_style(Style::default().bg(Color::Rgb(0xDD, 0xEE, 0xFF)))
     .highlight_symbol("");
 
     let mut table_state = TableState::default();
     if focused {
+        let selected = visible
+            .iter()
+            .position(|&idx| idx == state.selected_group_index)
+            .unwrap_or(0)
+            .min(visible.len().saturating_sub(1));
         table_state.select(Some(
-            state
-                .selected_group_index
-                .min(state.groups.len().saturating_sub(1)),
+            selected,
         ));
     }
     frame.render_stateful_widget(table, area, &mut table_state);
@@ -105,10 +113,10 @@ fn render_groups_panel(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
 fn render_todo_list(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
     let focused = state.focused_panel == PanelFocus::Todos;
     let visible = state.filtered_todo_indices();
-    let panel_title = format!("Todos ({})", state.filter.label());
+    let panel_title = format!("Todos ({})", state.todo_filter.label());
 
     if visible.is_empty() {
-        let text = match state.filter {
+        let text = match state.todo_filter {
             Filter::All => "No todos in this group. Press 'a' to add one.",
             Filter::Open | Filter::Done => "No todos in this filter for selected group.",
         };
